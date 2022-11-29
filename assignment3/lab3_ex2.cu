@@ -11,6 +11,7 @@ __global__ void gemm(DataType *A, DataType *B, DataType *C, int numARows,
     int row = blockIdx.y * blockDim.y + threadIdx.y; 
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int sum = 0;
+    
     if( col < k && row < m) 
     {
         for(int i = 0; i < n; i++) 
