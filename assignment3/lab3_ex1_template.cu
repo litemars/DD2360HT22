@@ -77,9 +77,11 @@ int main(int argc, char **argv) {
   cudaMemcpy(deviceInput2, hostInput2, inputLength*sizeof(DataType), cudaMemcpyHostToDevice);
 
   //@@ Initialize the 1D grid and block dimensions here
-
+  dim3 Dg(7,1,1)
+  dim3 Db(256,1,1)
 
   //@@ Launch the GPU Kernel here
+  vecAdd<<<Dg,Db>>>(deviceInput1,deviceInput2,deviceOutput,inputLength);
 
 
   //@@ Copy the GPU memory back to the CPU here
