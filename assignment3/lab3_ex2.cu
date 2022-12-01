@@ -13,13 +13,11 @@ __global__ void gemm(DataType *A, DataType *B, DataType *C, int numARows,
     
     if( id < numBColumns*numARows) 
     {
-      printf("id %d\n",id);
         C[id]=0;
         for(int k=0;k<numARows;k++){
 
-            printf("id: %d : %d - %d\n",id,k*+id%numARows,id%numBColumns+k*numBColumns);
-            __syncthreads();
-            //C[id]+=A[k+col+row*numARows]*B[numBColumns*k];
+            printf("id: %d : %d - %d\n",id,k+id-(id%numARows),id%numBColumns+k*(numBColumns));
+            C[id]+=A[k+id-(id%numBColumns)]*B[id%numBColumns+k*(numBColumns)];
             }
           }
 }
@@ -104,15 +102,14 @@ int main(int argc, char **argv) {
     
     for(int j=0;j<numBColumns;j++){
       //printf("i: %d and j: %d\n",i,j);
-      for(int k=0;k<numAColumns;k++){
+      for(int k=0;k<numARows;k++){
         //printf("%d - %d\n",k+numBColumns*i,j+numBColumns*k);
         resultRef[j+numBColumns*i]+=hostA[k+numBColumns*i]*hostB[j+numBColumns*k];
       }
       
     }
   }
-  printf("Matrix C:\n");
-  printArray(resultRef,numCRows,numCColumns);
+  
 
   //@@ Insert code below to allocate GPU memory here
   cudaMalloc(&deviceA, numARows * numAColumns * sizeof(DataType));
@@ -132,13 +129,26 @@ int main(int argc, char **argv) {
   gemm<<<Dg,Db>>>(deviceA,deviceB,deviceC,numARows,numAColumns,numBRows,numBColumns);
   cudaDeviceSynchronize();
   //@@ Copy the GPU memory back to the CPU here
+  cudaMemcpy(hostC, deviceC,  numCRows * numCColumns *sizeof(DataType), cudaMemcpyDeviceToHost);
 
 
+  printf("Matrix C:\n");
+  printArray(resultRef,numCRows,numCColumns);
+
+  printf("Device C:\n");
+  printArray(hostC,numCRows,numCColumns);
   //@@ Insert code below to compare the output with the reference
-
-
-  //@@ Free the GPU memory here
-
+  for(int i=0;i<numCRows * numCColumns;i++){
+    if(hostC[i]!=resultRef[i] && abs(resultRef[i]-hostC[i])>0.001 ){
+      printf("error %f - %f\n",hostC[i],resultRef[i]);
+      return 0;
+    }
+  }
+  printf("Correct\n");
+  //@@ Free the GP U memory here
+  cudaFree(deviceA);
+  cudaFree(deviceB);
+  cudaFree(deviceC);
 
   //@@ Free the CPU memory here
   free(hostA);
