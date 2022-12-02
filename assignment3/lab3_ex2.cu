@@ -9,16 +9,18 @@ __global__ void gemm(DataType *A, DataType *B, DataType *C, int numARows,
                       int numAColumns, int numBRows, int numBColumns){
   //@@ Insert code to implement matrix multiplication here
     
-    int id = blockDim.x * blockIdx.x + threadIdx.x;
+    int row = blockDim.y * blockIdx.y + threadIdx.y;
+    int col = blockDim.x * blockIdx.x + threadIdx.x;
     
-    if( id < numBColumns*numARows) 
+    
+    if( col < numBColumns && row < numARows) 
     {
-        C[id]=0;
-        for(int k=0;k<numARows;k++){
-
-            printf("id: %d : %d - %d\n",id,k+id-(id%numARows),id%numBColumns+k*(numBColumns));
-            C[id]+=A[k+id-(id%numBColumns)]*B[id%numBColumns+k*(numBColumns)];
+      //printf("row %d and col %d",row,col);
+        double sum=0.0f;
+        for(int k=0;k<numAColumns;k++){
+            sum+= A[row*numAColumns + k] * B[k*numBColumns + col];
             }
+            C[row*numBColumns+col]=sum;
           }
 }
 
@@ -67,9 +69,11 @@ int main(int argc, char **argv) {
   
   numARows=atoi(argv[1]);
   numAColumns=atoi(argv[2]);
-  numBRows=atoi(argv[2]);
+
+  numBRows=atoi(argv[2]); // numAColumns
   numBColumns=atoi(argv[3]);
-  numCRows=atoi(argv[1]);
+  
+  numCRows=atoi(argv[1]); 
   numCColumns=atoi(argv[3]);
 
   printf("Input matrix dim (%d x %d) (%d x %d) (%d x %d)\n", numARows, numAColumns, numBRows, numBColumns, numCRows, numCColumns);
@@ -86,30 +90,18 @@ int main(int argc, char **argv) {
   for(int i=0;i<numBRows * numBColumns;i++){
       hostB[i]=RandomReal(0,1);
   }
-  printf("Matrix A:\n");
-  printArray(hostA,numARows,numAColumns);
-
-  printf("Matrix B:\n");
-  printArray(hostB,numBRows,numBColumns);
 
   resultRef = (DataType*)malloc(numCRows * numCColumns * sizeof(DataType));
 
-  //A0*B(0+0row)+A1*B(0+1row)+A2*B(0+2row)=C0
-  //A0*B(1+0row)+A1*B(1+1row)+A2*B(1+2row)=C1
-  //
-  //A
   for(int i=0; i<numARows;i++){
-    
     for(int j=0;j<numBColumns;j++){
-      //printf("i: %d and j: %d\n",i,j);
-      for(int k=0;k<numARows;k++){
-        //printf("%d - %d\n",k+numBColumns*i,j+numBColumns*k);
-        resultRef[j+numBColumns*i]+=hostA[k+numBColumns*i]*hostB[j+numBColumns*k];
+       resultRef[i*numBColumns+j]=0.0;
+      for(int k=0;k<numBRows;k++){
+        resultRef[i*numBColumns+j]+=hostA[k+numBRows*i]*hostB[j+numBColumns*k];
       }
       
     }
   }
-  
 
   //@@ Insert code below to allocate GPU memory here
   cudaMalloc(&deviceA, numARows * numAColumns * sizeof(DataType));
@@ -122,8 +114,8 @@ int main(int argc, char **argv) {
 
 
   //@@ Initialize the grid and block dimensions here
-  dim3 Dg(1024,1,1);
-  dim3 Db(1024,1,1);
+  dim3 Dg(numCColumns,numCRows,1);
+  dim3 Db(32,32,1);
 
   //@@ Launch the GPU Kernel here
   gemm<<<Dg,Db>>>(deviceA,deviceB,deviceC,numARows,numAColumns,numBRows,numBColumns);
@@ -132,16 +124,11 @@ int main(int argc, char **argv) {
   cudaMemcpy(hostC, deviceC,  numCRows * numCColumns *sizeof(DataType), cudaMemcpyDeviceToHost);
 
 
-  printf("Matrix C:\n");
-  printArray(resultRef,numCRows,numCColumns);
-
-  printf("Device C:\n");
-  printArray(hostC,numCRows,numCColumns);
   //@@ Insert code below to compare the output with the reference
   for(int i=0;i<numCRows * numCColumns;i++){
     if(hostC[i]!=resultRef[i] && abs(resultRef[i]-hostC[i])>0.001 ){
       printf("error %f - %f\n",hostC[i],resultRef[i]);
-      return 0;
+      return -1;
     }
   }
   printf("Correct\n");
