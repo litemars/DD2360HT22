@@ -11,32 +11,32 @@ __global__ void histogram_kernel(unsigned int *input, unsigned int *bins,
                                  unsigned int num_bins) {
 
 //@@ Insert code below to compute histogram of input using shared memory and atomics
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
+   
+  __shared__ unsigned int shared_bins[NUM_BINS];
+  int id = blockDim.x * blockIdx.x + threadIdx.x;
 
-    __shared__ unsigned int shared_bins[NUM_BINS];
-    
-    if(id<num_bins){
-        //printf("Hello %d",id);
-        shared_bins[id]=0;
-        //printf("Hello %d, val %d",id,shared_bins[id]);
+  for (int j=threadIdx.x; j<num_bins; j+=blockDim.x) {
+    if (j < num_bins) {
+      shared_bins[j]=0;
     }
-    __syncthreads();
-    if(id < num_elements) {
-        //printf("valure op: id: %d, input[id]: %d\n",id,input[id]);
-        
+  } 
+  __syncthreads();
+  
+
+  if (id < num_elements) {
         atomicAdd(&(shared_bins[input[id]]), 1);
-    }
-    __syncthreads();
-    if(id<num_bins){
-        //printf("Hello %d",id);
-        shared_bins[id]=0;
-        printf("Hello %d, val %d\n",id,shared_bins[id]);
-    }
-    __syncthreads();
-    if(id<num_bins){
-        atomicAdd(&(bins[id]), shared_bins[id]);
-    }
+  }
+   __syncthreads(); 
+
+
+  for (int j=threadIdx.x; j<num_bins; j+=blockDim.x) {
+    if (j < num_bins) {
+        atomicAdd(&(bins[j]), shared_bins[j]);
+      }
+  }
+    
 }
+
 
 __global__ void convert_kernel(unsigned int *bins, unsigned int num_bins) {
 
@@ -103,14 +103,14 @@ int main(int argc, char **argv) {
 
   //@@ Initialize the grid and block dimensions here
     dim3 Dg(1024,1,1);
-    dim3 Db(64,1,1);
+    dim3 Db(1024,1,1);
 
   //@@ Launch the GPU Kernel here
     histogram_kernel<<<Dg, Db>>>(deviceInput, deviceBins, inputLength, NUM_BINS);
     cudaDeviceSynchronize();
   //@@ Initialize the second grid and block dimensions here
     dim3 Dg1(1024,1,1);
-    dim3 Db1(64,1,1);
+    dim3 Db1(1024,1,1);
 
   //@@ Launch the second GPU Kernel here
     convert_kernel<<<Dg1, Db1>>>(deviceBins, NUM_BINS);
