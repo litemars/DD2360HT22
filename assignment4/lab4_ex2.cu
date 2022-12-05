@@ -2,17 +2,17 @@
 #include <stdio.h>
 #include <sys/time.h>
 #include <stdlib.h>
+#include <cuda.h>
 
 #define DataType double
-
+#define DEBUG 1
 
 __global__ void vecAdd(DataType *in1, DataType *in2, DataType *out, int len) {
   //@@ Insert code to implement vector addition here
     int id = blockDim.x * blockIdx.x + threadIdx.x;
-    
-    if(id < len) {
+    if (id < len)
       out[id] = in1[id] + in2[id];
-      }
+      
 }
 
 //@@ Insert code to implement timer start
@@ -45,7 +45,7 @@ void printArray(double *in, int len){
 
 int main(int argc, char **argv) {
   
-  int inputLength;
+  int inputLength, nStream;
   DataType *hostInput1;
   DataType *hostInput2;
   DataType *hostOutput;
@@ -55,17 +55,30 @@ int main(int argc, char **argv) {
   DataType *deviceOutput;
 
   //@@ Insert code below to read in inputLength from args
-  if (argc<2){
-    printf("input length invalid\n");
+  if (argc<3){
+    printf("input length invalid - ./a.out inputLength streamSize\n");
     return 0;
   }
   inputLength=atoi(argv[1]);
-  printf("The input length is %d\n", inputLength);
+  nStream=atoi(argv[2]);
+  printf("The input length is %d and the streamSize: %d\n", inputLength,nStream);
+
+
+  int StreamSize  = inputLength / nStream;
+  int StreamByte = StreamSize*sizeof(DataType);
+
+  #ifdef DEBUG
+    printf("StreamSize: %d streamByte: %d\n",StreamSize,StreamByte);
+  #endif
+
+  cudaStream_t stream[nStream];
+  for(int i=0;i<nStream;++i)
+    cudaStreamCreate(&stream[i]);
   
   //@@ Insert code below to allocate Host memory for input and output
-  hostInput1 = (DataType*)malloc(inputLength*sizeof(DataType));
-  hostInput2 = (DataType*)malloc(inputLength*sizeof(DataType));
-  hostOutput = (DataType*)malloc(inputLength*sizeof(DataType));
+  cudaHostAlloc((void**)&hostInput1,inputLength*sizeof(DataType),cudaHostAllocDefault);
+  cudaHostAlloc((void**)&hostInput2,inputLength*sizeof(DataType),cudaHostAllocDefault);
+  cudaHostAlloc((void**)&hostOutput,inputLength*sizeof(DataType),cudaHostAllocDefault);
   
   //@@ Insert code below to initialize hostInput1 and hostInput2 to random numbers, and create reference result in CPU
 
@@ -75,38 +88,53 @@ int main(int argc, char **argv) {
   }
 
   resultRef = (DataType*)malloc(inputLength*sizeof(DataType));
-  double start_time=startTimer();
+  //double start_time=startTimer();
   for(int i=0;i<inputLength;i++){
     resultRef[i]=hostInput1[i]+hostInput2[i];
   }
-  double stopCPU=stopTimer(start_time);
+  //double stopCPU=stopTimer(start_time);
   //@@ Insert code below to allocate GPU memory here
   cudaMalloc(&deviceInput1, inputLength*sizeof(DataType));
   cudaMalloc(&deviceInput2, inputLength*sizeof(DataType));
   cudaMalloc(&deviceOutput, inputLength*sizeof(DataType));
 
-  //@@ Insert code to below to Copy memory to the GPU here
-  double start_mem=startTimer();
-  cudaMemcpy(deviceInput1, hostInput1, inputLength*sizeof(DataType), cudaMemcpyHostToDevice);
-  cudaMemcpy(deviceInput2, hostInput2, inputLength*sizeof(DataType), cudaMemcpyHostToDevice);
-  cudaDeviceSynchronize();
-  double stop_mem=stopTimer(start_mem);
-  //@@ Initialize the 1D grid and block dimensions here
-  dim3 Dg(1024,1,1);
+  dim3 Dg(1024/nStream,1,1);
   dim3 Db(1024,1,1);
+  
+  //@@ Insert code to below to Copy memory to the GPU here
+  //double start_mem=startTimer();
+  printf("Host1\n");
+  printArray(hostInput1,inputLength);
+
+  for(int i=0;i<nStream;++i){
+    
+    int offset=i*StreamSize;
+
+    printf("offeset: %d-val %f - streamByte %d\n ",offset,hostInput1[offset],StreamByte);
+    cudaMemcpyAsync(&deviceInput1[offset], &hostInput1[offset], StreamByte, cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(&deviceInput2[offset], &hostInput2[offset], StreamByte, cudaMemcpyHostToDevice,stream[i]);
+    vecAdd<<<Dg,Db,0,stream[i]>>>(&deviceInput1[offset],&deviceInput2[offset],&deviceOutput[offset],StreamSize);
+    cudaMemcpyAsync(&hostOutput[offset], &deviceOutput[offset], StreamByte, cudaMemcpyDeviceToHost,stream[i]);
+  }
+  //double stop_mem=stopTimer(start_mem);
+  //@@ Initialize the 1D grid and block dimensions here
+  for(int i=0; i<nStream; i++)
+		cudaStreamSynchronize(stream[i]);
 
   //@@ Launch the GPU Kernel here
-  double start_time_gpu=startTimer();
-  vecAdd<<<Dg,Db>>>(deviceInput1,deviceInput2,deviceOutput,inputLength);
-  cudaDeviceSynchronize();
-  double stopGPU=stopTimer(start_time_gpu);
+  //double start_time_gpu=startTimer();
 
-  double start_mem_2=startTimer();
+  //double stopGPU=stopTimer(start_time_gpu);
+
+  //double start_mem_2=startTimer();
   //@@ Copy the GPU memory back to the CPU here
-  cudaMemcpy(hostOutput, deviceOutput, inputLength*sizeof(DataType), cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
-  double stop_mem_2=stopTimer(start_mem_2);
 
+  //double stop_mem_2=stopTimer(start_mem_2);
+  printf("Array from device:\n");
+  printArray(hostOutput,inputLength);
+  printf("Array from host:\n");
+  printArray(resultRef,inputLength);
+  
   //@@ Insert code below to compare the output with the reference
   for(int i=0;i<inputLength;i++){
     if(resultRef[i] != hostOutput[i] && abs(resultRef[i]-hostOutput[i])>0.001 ){
@@ -115,9 +143,12 @@ int main(int argc, char **argv) {
     }
   }
   printf("sum verified: Correct!\n");
-  printf("Time Host->Device: %f - Time Device->Host: %f\n",stop_mem,stop_mem_2);
-  printf("CPU time: %f - GPU time: %f\n",stopCPU,stopGPU);
+  //printf("Time Host->Device: %f - Time Device->Host: %f\n",stop_mem,stop_mem_2);
+  //printf("CPU time: %f - GPU time: %f\n",stopCPU,stopGPU);
   
+  for(int i=0;i<nStream;++i)
+    cudaStreamDestroy(stream[i]);
+
   //@@ Free the GPU memory here
   cudaFree(deviceInput1);
   cudaFree(deviceInput2);
