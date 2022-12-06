@@ -157,9 +157,9 @@ int main(int argc, char **argv) {
 
   //@@ Free the CPU memory here
 
-  free(hostInput1);
-  free(hostInput2);
-  free(hostOutput);
+  cudaFree(hostInput1);
+  cudaFree(hostInput2);
+  cudaFree(hostOutput);
 
   return 0;
 }
