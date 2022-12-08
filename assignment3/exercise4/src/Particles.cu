@@ -74,41 +74,45 @@ void particle_deallocate(struct particles* part)
 
 // GPU
 
-__global__ void mover_GPU(struct particles* part,struct grid* grd, struct EMfield* field, struct parameters* param){
+__global__ void mover_GPU(struct particles* gpu_part, struct EMfield* gpu_field,struct grid* gpu_grd, struct parameters* gpu_param){
+    
     int id = blockDim.x * blockIdx.x + threadIdx.x;
-
-    FPpart dt_sub_cycling = (FPpart) param->dt/((double) part->n_sub_cycles);
-    FPpart dto2 = .5*dt_sub_cycling, qomdt2 = part->qom*dto2/param->c;
+    
+    if (id >= gpu_part->nop) 
+        return;
+    
+    FPpart dt_sub_cycling = (FPpart) gpu_param->dt/((double) gpu_part->n_sub_cycles);
+    FPpart dto2 = .5*dt_sub_cycling, qomdt2 = gpu_part->qom*dto2/gpu_param->c;
     FPpart omdtsq, denom, ut, vt, wt, udotb;
     
     FPfield Exl=0.0, Eyl=0.0, Ezl=0.0, Bxl=0.0, Byl=0.0, Bzl=0.0;
 
     FPpart xptilde, yptilde, zptilde, uptilde, vptilde, wptilde;
-    xptilde = part->x[id];
-    yptilde = part->y[id];
-    zptilde = part->z[id];
+    xptilde = gpu_part->x[id];
+    yptilde = gpu_part->y[id];
+    zptilde = gpu_part->z[id];
 
     int ix,iy,iz;
     FPfield weight[2][2][2];
     FPfield xi[2], eta[2], zeta[2];
 
-    for(int innter=0; innter < part->NiterMover; innter++){
+    for(int innter=0; innter < gpu_part->NiterMover; innter++){
                 // interpolation G-->P
-        ix = 2 +  int((part->x[id] - grd->xStart)*grd->invdx);
-        iy = 2 +  int((part->y[id] - grd->yStart)*grd->invdy);
-        iz = 2 +  int((part->z[id] - grd->zStart)*grd->invdz);
+        ix = 2 +  int((gpu_part->x[id] - gpu_grd->xStart)*gpu_grd->invdx);
+        iy = 2 +  int((gpu_part->y[id] - gpu_grd->yStart)*gpu_grd->invdy);
+        iz = 2 +  int((gpu_part->z[id] - gpu_grd->zStart)*gpu_grd->invdz);
                 
                 // calculate weights
-        xi[0]   = part->x[id] - grd->XN[ix - 1][iy][iz];
-        eta[0]  = part->y[id] - grd->YN[ix][iy - 1][iz];
-        zeta[0] = part->z[id] - grd->ZN[ix][iy][iz - 1];
-        xi[1]   = grd->XN[ix][iy][iz] - part->x[id];
-        eta[1]  = grd->YN[ix][iy][iz] - part->y[id];
-        zeta[1] = grd->ZN[ix][iy][iz] - part->z[id];
+        xi[0]   = gpu_part->x[id] - gpu_grd->XN[ix - 1][iy][iz];
+        eta[0]  = gpu_part->y[id] - gpu_grd->YN[ix][iy - 1][iz];
+        zeta[0] = gpu_part->z[id] - gpu_grd->ZN[ix][iy][iz - 1];
+        xi[1]   = gpu_grd->XN[ix][iy][iz] - gpu_part->x[id];
+        eta[1]  = gpu_grd->YN[ix][iy][iz] - gpu_part->y[id];
+        zeta[1] = gpu_grd->ZN[ix][iy][iz] - gpu_part->z[id];
         for (int ii = 0; ii < 2; ii++)
             for (int jj = 0; jj < 2; jj++)
                 for (int kk = 0; kk < 2; kk++)
-                    weight[ii][jj][kk] = xi[ii] * eta[jj] * zeta[kk] * grd->invVOL;
+                    weight[ii][jj][kk] = xi[ii] * eta[jj] * zeta[kk] * gpu_grd->invVOL;
                 
                 // set to zero local electric and magnetic field
         Exl=0.0, Eyl = 0.0, Ezl = 0.0, Bxl = 0.0, Byl = 0.0, Bzl = 0.0;
@@ -116,33 +120,33 @@ __global__ void mover_GPU(struct particles* part,struct grid* grd, struct EMfiel
         for (int ii=0; ii < 2; ii++)
             for (int jj=0; jj < 2; jj++)
                 for(int kk=0; kk < 2; kk++){
-                    Exl += weight[ii][jj][kk]*field->Ex[ix- ii][iy -jj][iz- kk ];
-                    Eyl += weight[ii][jj][kk]*field->Ey[ix- ii][iy -jj][iz- kk ];
-                    Ezl += weight[ii][jj][kk]*field->Ez[ix- ii][iy -jj][iz -kk ];
-                    Bxl += weight[ii][jj][kk]*field->Bxn[ix- ii][iy -jj][iz -kk ];
-                    Byl += weight[ii][jj][kk]*field->Byn[ix- ii][iy -jj][iz -kk ];
-                    Bzl += weight[ii][jj][kk]*field->Bzn[ix- ii][iy -jj][iz -kk ];
+                    Exl += weight[ii][jj][kk]*gpu_field->Ex[ix- ii][iy -jj][iz- kk ];
+                    Eyl += weight[ii][jj][kk]*gpu_field->Ey[ix- ii][iy -jj][iz- kk ];
+                    Ezl += weight[ii][jj][kk]*gpu_field->Ez[ix- ii][iy -jj][iz -kk ];
+                    Bxl += weight[ii][jj][kk]*gpu_field->Bxn[ix- ii][iy -jj][iz -kk ];
+                    Byl += weight[ii][jj][kk]*gpu_field->Byn[ix- ii][iy -jj][iz -kk ];
+                    Bzl += weight[ii][jj][kk]*gpu_field->Bzn[ix- ii][iy -jj][iz -kk ];
                     }
                 
                 // end interpolation
         omdtsq = qomdt2*qomdt2*(Bxl*Bxl+Byl*Byl+Bzl*Bzl);
         denom = 1.0/(1.0 + omdtsq);
                 // solve the position equation
-        ut= part->u[id] + qomdt2*Exl;
-        vt= part->v[id] + qomdt2*Eyl;
-        wt= part->w[id] + qomdt2*Ezl;
+        ut= gpu_part->u[id] + qomdt2*Exl;
+        vt= gpu_part->v[id] + qomdt2*Eyl;
+        wt= gpu_part->w[id] + qomdt2*Ezl;
         udotb = ut*Bxl + vt*Byl + wt*Bzl;
                 // solve the velocity equation
         uptilde = (ut+qomdt2*(vt*Bzl -wt*Byl + qomdt2*udotb*Bxl))*denom;
         vptilde = (vt+qomdt2*(wt*Bxl -ut*Bzl + qomdt2*udotb*Byl))*denom;
         wptilde = (wt+qomdt2*(ut*Byl -vt*Bxl + qomdt2*udotb*Bzl))*denom;
                 // update position
-        part->x[id] = xptilde + uptilde*dto2;
-        part->y[id] = yptilde + vptilde*dto2;
-        part->z[id] = zptilde + wptilde*dto2;
+        gpu_part->x[id] = xptilde + uptilde*dto2;
+        gpu_part->y[id] = yptilde + vptilde*dto2;
+        gpu_part->z[id] = zptilde + wptilde*dto2;
                 
             
-    } // end of iterati
+    }
 
 }
 
@@ -151,30 +155,33 @@ int mover_PC_gpu(struct particles* part, struct EMfield* field, struct grid* grd
 {
     // print species and subcycling
     std::cout << "***  MOVER with SUBCYCLYING "<< param->n_sub_cycles << " - species " << part->species_ID << " ***" << std::endl;
- 
-    // auxiliary variables
-    FPpart dt_sub_cycling = (FPpart) param->dt/((double) part->n_sub_cycles);
-    FPpart dto2 = .5*dt_sub_cycling, qomdt2 = part->qom*dto2/param->c;
-    FPpart omdtsq, denom, ut, vt, wt, udotb;
-    
-    // local (to the particle) electric and magnetic field
-    FPfield Exl=0.0, Eyl=0.0, Ezl=0.0, Bxl=0.0, Byl=0.0, Bzl=0.0;
-    
-    // interpolation densities
-    int ix,iy,iz;
-    FPfield weight[2][2][2];
-    FPfield xi[2], eta[2], zeta[2];
-    
-    // intermediate particle position and velocity
-    FPpart xptilde, yptilde, zptilde, uptilde, vptilde, wptilde;
-    
+    particles* gpu_part;
+    EMfield* gpu_field;
+    grid* gpu_grd;
+    parameters* gpu_param;
+
+
+    cudaMalloc(&gpu_part, sizeof(particles));
+    cudaMalloc(&gpu_field, sizeof(EMfield));
+    cudaMalloc(&gpu_grd, sizeof(grid));
+    cudaMalloc(&gpu_param, sizeof(parameters));
+
+    cudaMemcpy(gpu_part, part, sizeof(particles), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_field, field, sizeof(EMfield), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_grd, grd, sizeof(grid), cudaMemcpyHostToDevice);
+    cudaMemcpy(gpu_param, param, sizeof(parameters), cudaMemcpyHostToDevice);
     // start subcycling
     for (int i_sub=0; i_sub <  part->n_sub_cycles; i_sub++){
         // move each particle with new fields
+        dim3 Dg(1024,1,1);
+        dim3 Db(1024,1,1);
+        mover_GPU<<<Dg,Db>>>(gpu_part,gpu_field,gpu_grd,gpu_param);
+        /*
         for (int i=0; i <  part->nop; i++){
             xptilde = part->x[i];
             yptilde = part->y[i];
             zptilde = part->z[i];
+            
             // calculate the average velocity iteratively
             for(int innter=0; innter < part->NiterMover; innter++){
                 // interpolation G-->P
@@ -301,8 +308,19 @@ int mover_PC_gpu(struct particles* part, struct EMfield* field, struct grid* grd
             
             
         }  // end of subcycling
+        */
     } // end of one particle
-                                                                        
+    cudaMemcpy(part, gpu_part, sizeof(particles), cudaMemcpyDeviceToHost);
+    cudaMemcpy(field, gpu_field, sizeof(EMfield), cudaMemcpyDeviceToHost);
+    cudaMemcpy(grd, gpu_grd, sizeof(grid), cudaMemcpyDeviceToHost);
+    cudaMemcpy(param, gpu_param, sizeof(parameters), cudaMemcpyDeviceToHost);
+
+    cudaFree(gpu_part);
+    cudaFree(gpu_field);
+    cudaFree(gpu_grd);
+    cudaFree(gpu_param);  
+
+                                                                    
     return(0); // exit succcesfully
 } 
 

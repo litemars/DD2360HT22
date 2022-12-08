@@ -30,7 +30,7 @@
 // Read and output operations
 #include "RW_IO.h"
 
-#define CPU 1
+#define CPU null
 
 int main(int argc, char **argv){
     
@@ -94,11 +94,9 @@ int main(int argc, char **argv){
         // implicit mover
         iMover = cpuSecond(); // start timer for mover
         for (int is=0; is < param.ns; is++)
-            #ifdef CPU
-                mover_PC(&part[is],&field,&grd,&param);
-            #else
-                mover_PC_gpu(&part[is],&field,&grd,&param);
-            #endif
+                //mover_PC(&part[is],&field,&grd,&param);
+            mover_PC_gpu(&part[is],&field,&grd,&param);
+
         eMover += (cpuSecond() - iMover); // stop timer for mover
         
         
