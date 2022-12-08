@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
     unsigned int *resultRef;
     unsigned int *deviceInput;
     unsigned int *deviceBins;
+    FILE *fptr;
 
   //@@ Insert code below to read in inputLength from args
     if (argc<2){
@@ -118,15 +119,6 @@ int main(int argc, char **argv) {
 
   //@@ Copy the GPU memory back to the CPU here
     cudaMemcpy(hostBins, deviceBins, NUM_BINS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    printf("Host\n");
-    for(int i=0;i<20;i++)
-        if(resultRef[i]!=0)
-            printf("value %d in bin %d\n",resultRef[i],i);
-
-    printf("Device\n");
-    for(int i=0;i<20;i++)
-        if(hostBins[i]!=0)
-            printf("value %d in bin %d\n",hostBins[i],i);
   //@@ Insert code below to compare the output with the reference
     for(int i=0;i<NUM_BINS;i++)
         if(hostBins[i]!=resultRef[i]){
@@ -134,7 +126,15 @@ int main(int argc, char **argv) {
             return 0;
         }
     printf("correct");
-
+    fptr = fopen("./result.txt","w");
+    if(fptr == NULL)
+    {
+      printf("Error!");   
+      return -1;             
+    }
+    for(int i=0;i<NUM_BINS;i++){
+      fprintf(fptr,"%d\n",resultRef[i]);
+    }
   //@@ Free the GPU memory here
     
     cudaFree(deviceInput);
