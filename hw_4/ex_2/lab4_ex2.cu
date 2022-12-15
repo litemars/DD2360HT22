@@ -55,12 +55,12 @@ int main(int argc, char **argv) {
   DataType *deviceOutput;
 
   //@@ Insert code below to read in inputLength from args
-  if (argc<3){
-    printf("input length invalid - ./a.out inputLength streamSize\n");
+  if (argc<2){
+    printf("input length invalid - ./a.out inputLength\n");
     return 0;
   }
   inputLength=atoi(argv[1]);
-  nStream=atoi(argv[2]);
+  nStream=4;
   printf("The input length is %d and the streamSize: %d\n", inputLength,nStream);
 
 
