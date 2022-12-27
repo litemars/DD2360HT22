@@ -65,10 +65,11 @@ int main(int argc, char **argv) {
 
 
   int StreamSize  = inputLength / nStream;
-  int StreamByte = StreamSize*sizeof(DataType);
+  
+  //int StreamByte = StreamSize*sizeof(DataType);
 
   #ifdef DEBUG
-    printf("StreamSize: %d streamByte: %d\n",StreamSize,StreamByte);
+    printf("StreamSize: %d\n",StreamSize);
   #endif
 
   cudaStream_t stream[nStream];
@@ -76,9 +77,9 @@ int main(int argc, char **argv) {
     cudaStreamCreate(&stream[i]);
   
   //@@ Insert code below to allocate Host memory for input and output
-  cudaHostAlloc((void**)&hostInput1,inputLength*sizeof(DataType),cudaHostAllocDefault);
-  cudaHostAlloc((void**)&hostInput2,inputLength*sizeof(DataType),cudaHostAllocDefault);
-  cudaHostAlloc((void**)&hostOutput,inputLength*sizeof(DataType),cudaHostAllocDefault);
+  cudaMallocHost(&hostInput1,inputLength*sizeof(DataType));
+  cudaMallocHost(&hostInput2,inputLength*sizeof(DataType));
+  cudaMallocHost(&hostOutput,inputLength*sizeof(DataType));
   
   //@@ Insert code below to initialize hostInput1 and hostInput2 to random numbers, and create reference result in CPU
 

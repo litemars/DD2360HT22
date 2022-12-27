@@ -96,6 +96,10 @@ int main(int argc, char **argv) {
   cusparseHandle_t cusparseHandle;  // cuSPARSE handle
   cusparseMatDescr_t Adescriptor;   // Mat descriptor needed by cuSPARSE
 
+  cusparseSpMatDescr_t matrix_descr;
+  cusparseDnVecDescr_t temp_descr;
+  cusparseDnVecDescr_t tmp_descr;
+
   // Read the arguments from the command line
   dimX = atoi(argv[1]);
   nsteps = atoi(argv[2]);
@@ -111,22 +115,22 @@ int main(int argc, char **argv) {
   // is known from the structure of the sparse matrix
   nzv = 3 * dimX - 6;
 
-  //@@ Insert the code to allocate the temp, tmp and the sparse matrix
+  //@@ Insert the code to allocate the temp, tmp and the sparse matrix - done
   cputimer_start();
   gpuCheck(cudaMallocManaged(&temp, dimX * sizeof(double)));
   gpuCheck(cudaMallocManaged(&tmp, dimX * sizeof(double)));
   gpuCheck(cudaMallocManaged(&A, nzv * sizeof(double)));
   gpuCheck(cudaMallocManaged(&ARowPtr, (dimX + 1) * sizeof(int)));
   gpuCheck(cudaMallocManaged(&AColIndx, nzv * sizeof(int)));
-  
-
   cputimer_stop("Allocating device memory");
 
-  // Check if concurrentAccessQ is non zero in order to prefetch memory
+  // Check if concurrentAccessQ is non zero in order to prefetch memory - TODO: check if it works
   if (concurrentAccessQ) {
     cputimer_start();
     //@@ Insert code to prefetch in Unified Memory asynchronously to CPU
-
+    gpuCheck(cudaMemPrefetchAsync(A, nzv * sizeof(double), cudaCpuDeviceId));
+    gpuCheck(cudaMemPrefetchAsync(AColIndx, nzv * sizeof(int), cudaCpuDeviceId));
+    gpuCheck(cudaMemPrefetchAsync(ARowPtr, (dimX + 1) * sizeof(int), cudaCpuDeviceId));    
     cputimer_stop("Prefetching GPU memory to the host");
   }
 
@@ -144,49 +148,46 @@ int main(int argc, char **argv) {
 
   if (concurrentAccessQ) {
     cputimer_start();
-    //@@ Insert code to prefetch in Unified Memory asynchronously to the GPU
-
+    //@@ Insert code to prefetch in Unified Memory asynchronously to the GPU - done
+    gpuCheck(cudaMemPrefetchAsync(A, nzv * sizeof(double), device));
+    gpuCheck(cudaMemPrefetchAsync(AColIndx, nzv * sizeof(int), device));
+    gpuCheck(cudaMemPrefetchAsync(ARowPtr, (dimX + 1) * sizeof(int), device));    
     cputimer_stop("Prefetching GPU memory to the device");
   }
 
-  //@@ Insert code to create the cuBLAS handle
+  //@@ Insert code to create the cuBLAS handle - done 
   cublasCheck(cublasCreate(&cublasHandle));
 
-  //@@ Insert code to create the cuSPARSE handle
+  //@@ Insert code to create the cuSPARSE handle - done 
   cusparseCheck(cusparseCreate(&cusparseHandle));
 
   //@@ Insert code to set the cuBLAS pointer mode to CUSPARSE_POINTER_MODE_HOST
   cublasCheck(cublasSetPointerMode(cublasHandle, CUBLAS_POINTER_MODE_HOST));
-  cusparseCheck(cusparseSetPointerMode(cusparseHandle, CUSPARSE_POINTER_MODE_HOST));
+  //cusparseCheck(cusparseSetPointerMode(cusparseHandle, CUSPARSE_POINTER_MODE_HOST)); TODO: check
 
   //@@ Insert code to call cusparse api to create the mat descriptor used by cuSPARSE
-
-  cusparseSpMatDescr_t MatD;
-  cusparseDnVecDescr_t tempD;
-  cusparseDnVecDescr_t tmpD;
-
-  cusparseCheck(cusparseCreateCsr(&MatD, dimX, dimX, nzv, ARowPtr, AColIndx, A, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
-  cusparseCheck(cusparseCreateDnVec(&tempD, dimX, temp, CUDA_R_64F));
-  cusparseCheck(cusparseCreateDnVec(&tmpD, dimX, tmp, CUDA_R_64F));
+  cusparseCheck(cusparseCreateCsr(&matrix_descr, dimX, dimX, nzv, ARowPtr, AColIndx, A, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
+  cusparseCheck(cusparseCreateDnVec(&temp_descr, dimX, temp, CUDA_R_64F));
+  cusparseCheck(cusparseCreateDnVec(&tmp_descr, dimX, tmp, CUDA_R_64F));
   //@@ Insert code to call cusparse api to get the buffer size needed by the sparse matrix per
-  //@@ vector (SMPV) CSR routine of cuSPARSE
-  cusparseCheck(cusparseSpMV_bufferSize(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, MatD, tempD, &zero, tmpD, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+  //@@ vector (SMPV) CSR routine of cuSPARSE DONE
+  cusparseCheck(cusparseSpMV_bufferSize(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matrix_descr, temp_descr, &zero, tmp_descr, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
 
-  //@@ Insert code to allocate the buffer needed by cuSPARSE
+  //@@ ISPARSnsert code to allocate the buffer needed by cuE
   gpuCheck(cudaMalloc(&buffer, bufferSize));
 
   // Perform the time step iterations
   for (int it = 0; it < nsteps; ++it) {
     //@@ Insert code to call cusparse api to compute the SMPV (sparse matrix multiplication) for
     //@@ the CSR matrix using cuSPARSE. This calculation corresponds to:
-    //@@ tmp = 1 * A * temp + 0 * tmp
-
+    //@@ tmp = 1 * A * temp + 0 * tmp DONE
+    cusparseCheck(cusparseSpMV(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matrix_descr, temp_descr, &zero, tmp_descr, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT,buffer));
     //@@ Insert code to call cublas api to compute the axpy routine using cuBLAS.
-    //@@ This calculation corresponds to: temp = alpha * tmp + temp
-
+    //@@ This calculation corresponds to: temp = alpha * tmp + temp DONE
+    cublasCheck(cublasDaxpy_v2(cublasHandle, dimX, &alpha, tmp, 1, temp, 1));
     //@@ Insert code to call cublas api to compute the norm of the vector using cuBLAS
-    //@@ This calculation corresponds to: ||temp||
-
+    //@@ This calculation corresponds to: ||temp|| DONE
+    cublasCheck(cublasDnrm2_v2(cublasHandle, dimX, temp, 1, &norm));
     // If the norm of A*temp is smaller than 10^-4 exit the loop
     if (norm < 1e-4)
       break;
@@ -201,23 +202,23 @@ int main(int argc, char **argv) {
   one = -1;
   //@@ Insert the code to call cublas api to compute the difference between the exact solution
   //@@ and the approximation
-  //@@ This calculation corresponds to: tmp = -temp + tmp
-
+  //@@ This calculation corresponds to: tmp = -temp + tmp DONE
+  cublasCheck(cublasDaxpy_v2(cublasHandle, dimX, &one, temp, 1, tmp, 1)); 
   //@@ Insert the code to call cublas api to compute the norm of the absolute error
-  //@@ This calculation corresponds to: || tmp ||
-
+  //@@ This calculation corresponds to: || tmp || DONE
+  cublasCheck(cublasDnrm2_v2(cublasHandle, dimX, tmp, 1, &norm)); 
   error = norm;
   //@@ Insert the code to call cublas api to compute the norm of temp
   //@@ This calculation corresponds to: || temp ||
-
+  cublasCheck(cublasDnrm2_v2(cublasHandle, dimX, temp, 1, &norm));
   // Calculate the relative error
   error = error / norm;
   printf("The relative error of the approximation is %f\n", error);
 
   //@@ Insert the code to destroy the mat descriptor
-  cusparseCheck(cusparseDestroySpMat(MatD));
-  cusparseCheck(cusparseDestroyDnVec(tempD));
-  cusparseCheck(cusparseDestroyDnVec(tmpD));
+  cusparseCheck(cusparseDestroySpMat(matrix_descr));
+  cusparseCheck(cusparseDestroyDnVec(temp_descr));
+  cusparseCheck(cusparseDestroyDnVec(tmp_descr));
 
   //@@ Insert the code to destroy the cuSPARSE handle
   cusparseCheck(cusparseDestroy(cusparseHandle));
@@ -226,8 +227,12 @@ int main(int argc, char **argv) {
   cublasCheck(cublasDestroy(cublasHandle)); 
 
   //@@ Insert the code for deallocating memory
-
-
+  gpuCheck(cudaFree(buffer));
+  gpuCheck(cudaFree(ARowPtr));
+  gpuCheck(cudaFree(tmp));
+  gpuCheck(cudaFree(A));
+  gpuCheck(cudaFree(AColIndx));
+  gpuCheck(cudaFree(temp));
 
   return 0;
 }
