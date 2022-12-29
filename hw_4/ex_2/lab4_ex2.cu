@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
 
   int StreamSize  = inputLength / nStream;
   
-  //int StreamByte = StreamSize*sizeof(DataType);
+  int StreamByte = StreamSize*sizeof(DataType);
 
   #ifdef DEBUG
     printf("StreamSize: %d\n",StreamSize);
