@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
     
     int offset=i*StreamSize;
 
-    printf("offeset: %d-val %f - streamByte %d\n ",offset,hostInput1[offset],StreamByte);
+    //printf("offeset: %d-val %f - streamByte %d\n ",offset,hostInput1[offset],StreamByte);
     cudaMemcpyAsync(&deviceInput1[offset], &hostInput1[offset], StreamByte, cudaMemcpyHostToDevice, stream[i]);
     cudaMemcpyAsync(&deviceInput2[offset], &hostInput2[offset], StreamByte, cudaMemcpyHostToDevice,stream[i]);
     vecAdd<<<Dg,Db,0,stream[i]>>>(&deviceInput1[offset],&deviceInput2[offset],&deviceOutput[offset],StreamSize);
@@ -130,10 +130,10 @@ int main(int argc, char **argv) {
   //@@ Copy the GPU memory back to the CPU here
 
   //double stop_mem_2=stopTimer(start_mem_2);
-  printf("Array from device:\n");
-  printArray(hostOutput,inputLength);
-  printf("Array from host:\n");
-  printArray(resultRef,inputLength);
+  //printf("Array from device:\n");
+  //printArray(hostOutput,inputLength);
+  //printf("Array from host:\n");
+  //printArray(resultRef,inputLength);
   
   //@@ Insert code below to compare the output with the reference
   for(int i=0;i<inputLength;i++){
