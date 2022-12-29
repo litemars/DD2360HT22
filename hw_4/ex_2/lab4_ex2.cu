@@ -104,8 +104,8 @@ int main(int argc, char **argv) {
   
   //@@ Insert code to below to Copy memory to the GPU here
   //double start_mem=startTimer();
-  printf("Host1\n");
-  printArray(hostInput1,inputLength);
+  //printf("Host1\n");
+  //printArray(hostInput1,inputLength);
 
   for(int i=0;i<nStream;++i){
     
