@@ -105,12 +105,11 @@ int main(int argc, char **argv) {
   nsteps = atoi(argv[2]);
 
   // Print input arguments
-  printf("The X dimension of the grid is %d \n", dimX);
-  printf("The number of time steps to perform is %d \n", nsteps);
+  //printf("The X dimension of the grid is %d \n", dimX);
+  //printf("The number of time steps to perform is %d \n", nsteps);
 
   // Get if the cudaDevAttrConcurrentManagedAccess flag is set
   gpuCheck(cudaDeviceGetAttribute(&concurrentAccessQ, cudaDevAttrConcurrentManagedAccess, device));
-
   // Calculate the number of non zero values in the sparse matrix. This number
   // is known from the structure of the sparse matrix
   nzv = 3 * dimX - 6;
@@ -122,7 +121,7 @@ int main(int argc, char **argv) {
   gpuCheck(cudaMallocManaged(&A, nzv * sizeof(double)));
   gpuCheck(cudaMallocManaged(&ARowPtr, (dimX + 1) * sizeof(int)));
   gpuCheck(cudaMallocManaged(&AColIndx, nzv * sizeof(int)));
-  cputimer_stop("Allocating device memory");
+  //cputimer_stop("Allocating device memory");
 
   // Check if concurrentAccessQ is non zero in order to prefetch memory - TODO: check if it works
   if (concurrentAccessQ) {
@@ -137,14 +136,14 @@ int main(int argc, char **argv) {
   // Initialize the sparse matrix
   cputimer_start();
   matrixInit(A, ARowPtr, AColIndx, dimX, alpha);
-  cputimer_stop("Initializing the sparse matrix on the host");
+  //cputimer_stop("Initializing the sparse matrix on the host");
 
   //Initiliaze the boundary conditions for the heat equation
   cputimer_start();
   memset(temp, 0, sizeof(double) * dimX);
   temp[0] = tempLeft;
   temp[dimX - 1] = tempRight;
-  cputimer_stop("Initializing memory on the host");
+  //cputimer_stop("Initializing memory on the host");
 
   if (concurrentAccessQ) {
     cputimer_start();
@@ -163,17 +162,17 @@ int main(int argc, char **argv) {
 
   //@@ Insert code to set the cuBLAS pointer mode to CUSPARSE_POINTER_MODE_HOST
   cublasCheck(cublasSetPointerMode(cublasHandle, CUBLAS_POINTER_MODE_HOST));
-  //cusparseCheck(cusparseSetPointerMode(cusparseHandle, CUSPARSE_POINTER_MODE_HOST)); TODO: check
+  cusparseCheck(cusparseSetPointerMode(cusparseHandle, CUSPARSE_POINTER_MODE_HOST));
 
   //@@ Insert code to call cusparse api to create the mat descriptor used by cuSPARSE
   cusparseCheck(cusparseCreateCsr(&matrix_descr, dimX, dimX, nzv, ARowPtr, AColIndx, A, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
   cusparseCheck(cusparseCreateDnVec(&temp_descr, dimX, temp, CUDA_R_64F));
   cusparseCheck(cusparseCreateDnVec(&tmp_descr, dimX, tmp, CUDA_R_64F));
+  //@@ ISPARSnsert code to allocate the buffer needed by cuE
   //@@ Insert code to call cusparse api to get the buffer size needed by the sparse matrix per
   //@@ vector (SMPV) CSR routine of cuSPARSE DONE
   cusparseCheck(cusparseSpMV_bufferSize(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matrix_descr, temp_descr, &zero, tmp_descr, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
 
-  //@@ ISPARSnsert code to allocate the buffer needed by cuE
   gpuCheck(cudaMalloc(&buffer, bufferSize));
 
   // Perform the time step iterations
@@ -214,7 +213,8 @@ int main(int argc, char **argv) {
   // Calculate the relative error
   error = error / norm;
   printf("The relative error of the approximation is %f\n", error);
-
+  //printf("%f\n", error);
+  //printf("%d\n",atoi(argv[2]));
   //@@ Insert the code to destroy the mat descriptor
   cusparseCheck(cusparseDestroySpMat(matrix_descr));
   cusparseCheck(cusparseDestroyDnVec(temp_descr));
